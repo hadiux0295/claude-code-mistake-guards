@@ -81,7 +81,7 @@ Each `test_*.sh` checks both directions: what must be blocked is blocked, and wh
 
 The full log is a Korean e-book of 300+ entries: what happened, why, what we do now, and a one-line rule to paste into `CLAUDE.md`. **[MISTAKES.md](MISTAKES.md) has 50 of them in English.**
 
-**If you would read the full log in English, star or watch this repo.** That is how we decide whether to translate it.
+**If you would read the full log in English, star this repo.** To get a note when the translation ships, use Watch and pick Releases. That is how we decide whether to translate it.
 
 ### Who wrote this
 
