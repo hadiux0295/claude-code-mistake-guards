@@ -410,4 +410,4 @@ A handoff doc, a plan doc and the work notes all said a learning app had 10 chap
 
 ---
 
-*Want the other 250+ in English? Star or watch [the repo](https://github.com/hadiux0295/claude-code-mistake-guards). That's how we decide whether to translate the full log.*
+*Want the other 250+ in English? Star [the repo](https://github.com/hadiux0295/claude-code-mistake-guards), and use Watch → Releases to get a note when the translation ships. That's how we decide whether to translate the full log.*
