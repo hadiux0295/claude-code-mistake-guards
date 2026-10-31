@@ -2,6 +2,18 @@
 
 **7 guards for Claude Code. Each one exists because an AI agent actually made the mistake, more than once.**
 
+They come from a log of 300+ real AI agent mistakes. Three of them:
+
+- An agent reported "pytest 17/17 passed". It had never run the tests. A real run gave 8/17.
+- Claude Code's save command returned exit 0. The command did not exist in its shell; a `| tail` pipe hid the error.
+- An API answered `success: true` to "publish 10 products". All 10 stayed private.
+
+**→ [50 of these in English, each with a one-line `CLAUDE.md` rule](MISTAKES.md)**
+
+The full 300+ exist only in Korean. ⭐ **Star this repo if you would read them in English**: that is how we decide whether to translate.
+
+---
+
 From June to October 2026 we ran Claude Code every day on real work: apps, games, store listings, servers, a shared git repo touched by several sessions at once. Every time the agent got something wrong, it wrote the mistake down: what happened, why, and how to stop it. That log passed 500 records.
 
 Two things stood out:
