@@ -71,7 +71,7 @@ Each guard checks only what reaches it. `guard_bash.py` sees commands Claude run
 /plugin install synura-mistake-guards@synuracore
 ```
 
-**What the plugin runs:** one `PreToolUse` hook on `Bash`, `python3 hooks/guard_bash.py`. It reads the command Claude is about to run from stdin and, when a rule matches, prints a deny decision with the reason. It makes no network calls and writes no files. Only `self_kill` is on; every other rule stays off until you set its value (below). Override one command with `GUARD_OK=self_kill` in it. Needs Python 3.
+**What the plugin runs:** one `PreToolUse` hook on `Bash`, `python3 plugin/hooks/guard_self_kill.py` (the plugin is the `plugin/` folder only). It reads the command Claude is about to run from stdin and, when the pattern would hit its own shell, prints a deny decision with the reason. It reads nothing else, makes no network calls and writes no files. Override one command with `GUARD_OK=self_kill` in it. Needs Python 3. The other rules (bare `git pull`, blocked sites, upload layout, first-commit line) come with the copy install below.
 
 ### By copying (all 7 guards)
 

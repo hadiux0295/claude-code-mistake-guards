@@ -5,7 +5,7 @@
   "plugins": [
     {
       "name": "synura-mistake-guards",
-      "source": "./",
+      "source": "./plugin",
       "description": "Stops Claude Code from killing its own shell with pkill -f / pgrep -f (exit 143/144)."
     }
   ]

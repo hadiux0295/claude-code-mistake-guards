@@ -1,7 +1,7 @@
 {
   "name": "synura-mistake-guards",
   "displayName": "Mistake Guards",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "Stops Claude Code from killing its own shell: denies pkill -f / pgrep -f whose pattern matches the command's own text (exit 143/144) and points to pkill -A. Born from a log of real agent mistakes.",
   "author": {
     "name": "SynuraCore",
