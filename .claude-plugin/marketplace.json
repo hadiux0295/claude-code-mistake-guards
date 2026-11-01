@@ -1,0 +1,12 @@
+{
+  "name": "synuracore",
+  "description": "Claude Code guards built from a log of real agent mistakes",
+  "owner": { "name": "SynuraCore", "url": "https://synuracore.com" },
+  "plugins": [
+    {
+      "name": "synura-mistake-guards",
+      "source": "./",
+      "description": "Stops Claude Code from killing its own shell with pkill -f / pgrep -f (exit 143/144)."
+    }
+  ]
+}

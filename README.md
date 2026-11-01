@@ -2,6 +2,17 @@
 
 **7 guards for Claude Code. Each one exists because an AI agent actually made the mistake, more than once.**
 
+**As a plugin, zero config:** stops Claude Code from killing its own shell. `pkill -f server.js` matches the shell that runs it (the pattern is in that shell's own command line), so the tool call dies with exit 143/144 and nothing after it runs; a `while pgrep -f …` wait never ends. The guard denies the command and tells Claude the fix: `pkill -f '[s]erver.js'`.
+
+```
+/plugin marketplace add hadiux0295/claude-code-mistake-guards
+/plugin install synura-mistake-guards@synuracore
+```
+
+The other six guards need your own values, so they install by copying (see [Install](#install)).
+
+---
+
 They come from a log of 300+ real AI agent mistakes. Three of them:
 
 - An agent reported "pytest 17/17 passed". It had never run the tests. A real run gave 8/17.
@@ -23,7 +34,7 @@ Two things stood out:
 
 This repo is those gates: three Claude Code hooks and four pre-ship scripts, each with a test that proves it really blocks. All of them are small, readable Python with no dependencies beyond the standard library (Pillow and ffmpeg for two of the tools).
 
-> **Tested on Claude Code 2.1.310 (2026-10).** The PreToolUse guard and the Stop hook were also checked live in a fresh project: the guard denied a bare `git pull`, and the Stop hook made Claude rewrite a "traffic grew, so there's demand" reply.
+> **Tested on Claude Code 2.1.310 and 2.1.316 (2026-10/11).** Checked live in a fresh project: the guard denied a bare `git pull`, and the Stop hook made Claude rewrite a "traffic grew, so there's demand" reply. On 2.1.316 (Linux) a plain `pkill -f <pattern>` still ended the tool call with exit 144 in our test; loaded as a plugin, the guard denied it before it ran, and `pkill -f '[p]attern'` went through.
 
 ---
 
@@ -31,11 +42,11 @@ This repo is those gates: three Claude Code hooks and four pre-ship scripts, eac
 
 | # | File | Runs on | What it blocks | The mistake it came from |
 |---|------|---------|----------------|--------------------------|
-| 1 | `hooks/guard_bash.py` | `PreToolUse` · `Bash` | `pkill -f` and `pgrep -f` wait loops that match their own shell | `pkill -f server.js` killed Claude's own Bash shell (exit 144); a `while pgrep -f` wait never ended. Written down as a rule, then repeated several more times in two days. |
-| | | | A bare `git pull` in a shared working tree | Pull was banned in writing; the agent typed it anyway while debugging a failed push. |
-| | | | Opening a marketplace's web pages headlessly | One headless screenshot of our own shop page got the seller's IP bot-restricted ("automated activity on your network"). |
-| | | | Files scattered at the top of the folder a human uploads from, or a new file in a subfolder while an old one with the same name sits on top | The human uploaded the old file they saw first. The file size on the marketplace gave it away. |
-| | | | The session's first commit without a `said:` line | The agent kept answering the request in front of it instead of first saying what it judged most important. The line makes it say so. |
+| 1 | `hooks/guard_bash.py` | `PreToolUse` · `Bash` | `pkill -f`, and `pgrep -f` whose result is used (wait loops, `kill $(pgrep -f …)`, `\| xargs kill`), when the pattern matches their own shell. **On by default; the only rule the plugin turns on.** | `pkill -f server.js` killed Claude's own Bash shell (exit 144); a `while pgrep -f` wait never ended. Written down as a rule, then repeated several more times in two days. |
+| | | | A bare `git pull` in a shared working tree (off until `GUARD_SAFE_PULL` is set) | Pull was banned in writing; the agent typed it anyway while debugging a failed push. |
+| | | | Opening a marketplace's web pages headlessly (off until `GUARD_BLOCKED_SITES` is set) | One headless screenshot of our own shop page got the seller's IP bot-restricted ("automated activity on your network"). |
+| | | | Files scattered at the top of the folder a human uploads from, or a new file in a subfolder while an old one with the same name sits on top (off until `GUARD_UPLOAD_ROOT` is set) | The human uploaded the old file they saw first. The file size on the marketplace gave it away. |
+| | | | The session's first commit without a `said:` line (off until `GUARD_FIRST_COMMIT_LINE` is set) | The agent kept answering the request in front of it instead of first saying what it judged most important. The line makes it say so. |
 | 2 | `hooks/guard_short_save.py` | `PreToolUse` · your MCP save tool | A save under 300 characters to a tool that overwrites the whole record | To learn a version value, the agent sent a placeholder body to the *save* tool, twice in one day. Only a wrong guess stopped the record from being replaced by one line. |
 | 3 | `hooks/stop_check.py` | `Stop` | A reply that judges account eligibility from web search, or reads traffic as demand, without the fact that must come with it | Web search beat our own measured record three times ("you need a business registration": our own payout profile said otherwise). Bot and self traffic were read as customers, more than once. |
 | 4 | `tools/ship_check.py` | before upload | Tags over the limit, banned / trademark words, a missing preview video, a black stretch in the video, a file made with a tool whose terms don't allow selling | A checklist said "all tags ≤ 20 chars". Two tags were 21 and 22, and the video was missing. A new generator skipped the banned-word list that lived in an older generator. A beta AI feature's terms said non-commercial only. |
@@ -47,11 +58,22 @@ Guards 4 to 7 are worked examples from our own pipelines (a marketplace listing,
 
 ### What these guards do *not* catch
 
-Each guard checks only what reaches it. `guard_bash.py` sees commands Claude runs itself; paths hidden in `$VARIABLES` or inside `ssh "..."` are skipped. `ship_check.py` reads titles, tags and descriptions, not the text inside your PDFs or images. `stop_check.py` matches word patterns: it catches the repeat of a known wrong claim, not wrong claims in general. A guard that blocks too often gets switched off, so every pattern here was tested for false positives too.
+Each guard checks only what reaches it. `guard_bash.py` sees commands Claude runs itself; upload paths hidden in `$VARIABLES` or inside `ssh "..."` are skipped, and a `pkill -f "$PATTERN"` is judged as written (override it if the variable holds a bracket pattern). Text written into a file with a heredoc is not treated as a command. `ship_check.py` reads titles, tags and descriptions, not the text inside your PDFs or images. `stop_check.py` matches word patterns: it catches the repeat of a known wrong claim, not wrong claims in general. A guard that blocks too often gets switched off, so every pattern here was tested for false positives too.
 
 ---
 
 ## Install
+
+### As a plugin (the self-kill guard, zero config)
+
+```
+/plugin marketplace add hadiux0295/claude-code-mistake-guards
+/plugin install synura-mistake-guards@synuracore
+```
+
+**What the plugin runs:** one `PreToolUse` hook on `Bash`, `python3 hooks/guard_bash.py`. It reads the command Claude is about to run from stdin and, when a rule matches, prints a deny decision with the reason. It makes no network calls and writes no files. Only `self_kill` is on; every other rule stays off until you set its value (below). Override one command with `GUARD_OK=self_kill` in it. Needs Python 3.
+
+### By copying (all 7 guards)
 
 ```bash
 git clone https://github.com/hadiux0295/claude-code-mistake-guards.git
@@ -65,7 +87,7 @@ Then **merge** the `hooks` block of [`settings.json`](settings.json) into your p
 
 Before you use it, edit the values at the top of each file:
 
-- `guard_bash.py`: `BLOCKED_SITES`, `ALLOWED_API_HOSTS`, `SAFE_PULL`, `UPLOAD_ROOT`, `UPLOAD_TRACKS`. Delete any rule you don't need from `RULES`.
+- `guard_bash.py`: each optional rule is off until its value is set, at the top of the file or as an environment variable: `GUARD_SAFE_PULL`, `GUARD_BLOCKED_SITES` / `GUARD_ALLOWED_API_HOSTS` (comma lists), `GUARD_UPLOAD_ROOT` / `GUARD_UPLOAD_TRACKS`, `GUARD_FIRST_COMMIT_LINE` (this one writes a marker file per session under `.claude/guard_state/`). Delete any rule you don't need from `RULES`.
 - `guard_short_save.py`: the matcher in `settings.json` (`mcp__notes__save` is a placeholder; use your own `mcp__<server>__<tool>`), `FIELD` and `MIN`. Set `MIN` just below the shortest body you have ever legitimately saved.
 - `stop_check.py`: `RULES`. Start with the claims your agent has actually gotten wrong twice.
 - `tools/*.py`: the tables (`BANNED`, `COMMERCIAL_OK`, `OPENED`, …).
