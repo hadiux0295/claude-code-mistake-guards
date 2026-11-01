@@ -1,11 +1,20 @@
 {
   "name": "synura-mistake-guards",
   "displayName": "Mistake Guards",
-  "version": "1.1.0",
-  "description": "Stops Claude Code from killing its own shell: denies pkill -f, and pgrep -f wait loops, whose pattern also matches the shell running the command (exit 143/144). Born from a log of real agent mistakes.",
-  "author": { "name": "SynuraCore", "url": "https://synuracore.com" },
+  "version": "1.1.1",
+  "description": "Stops Claude Code from killing its own shell: denies pkill -f / pgrep -f whose pattern matches the command's own text (exit 143/144) and points to pkill -A. Born from a log of real agent mistakes.",
+  "author": {
+    "name": "SynuraCore",
+    "url": "https://synuracore.com"
+  },
   "homepage": "https://github.com/hadiux0295/claude-code-mistake-guards",
   "repository": "https://github.com/hadiux0295/claude-code-mistake-guards",
   "license": "MIT",
-  "keywords": ["hooks", "guardrails", "bash", "pkill", "safety"]
+  "keywords": [
+    "hooks",
+    "guardrails",
+    "bash",
+    "pkill",
+    "safety"
+  ]
 }

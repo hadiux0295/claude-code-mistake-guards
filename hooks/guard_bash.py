@@ -27,48 +27,63 @@ FIRST_COMMIT_LINE = os.environ.get("GUARD_FIRST_COMMIT_LINE", "")  # e.g. "said:
 # ──────────────────────────────────────────────────────────────────────────
 
 
-def _self_matching(args):
-    """args = the text after pkill/pgrep. True if it is -f (full command line) with a pattern that also matches its own
-    shell: the pattern is written literally in the command line of the shell running it. A bracket ([s]erver) or a
-    ^-anchored pattern still finds the target but not that literal text."""
+def _self_matching(args, text):
+    """args = the text after pkill/pgrep/pidwait, text = the whole command. The Bash tool runs the command as
+    bash -c "... eval '<the whole command>'", so that shell's own command line holds the whole text. True if -f is used
+    without -A (--ignore-ancestors) and the pattern matches that text. A bracket ([s]erver) only helps while the
+    plain word appears nowhere else: `cd /srv/server && pkill -f '[s]erver'` still matches its own shell."""
     try:
         toks = shlex.split(args)
     except ValueError:
         toks = args.split()
-    full, pat, i = False, None, 0
+    full, ancestors_off, pat, i = False, False, None, 0
     while i < len(toks):
         t = toks[i]
-        if t == "--full" or re.match(r"^-[A-Za-z]*f[A-Za-z]*$", t):
+        if t == "--full":
             full = True
-        elif t in ("-u", "-U", "-g", "-G", "-P", "-s", "-t", "-F", "--signal", "--pidfile"):
+        elif t == "--ignore-ancestors":
+            ancestors_off = True
+        elif t in ("-u", "-U", "-g", "-G", "-P", "-s", "-t", "-F", "-d", "-r", "-O", "--signal", "--pidfile"):
             i += 1
+        elif re.match(r"^-[A-Za-z]+$", t):
+            full = full or "f" in t
+            ancestors_off = ancestors_off or "A" in t
         elif not t.startswith("-"):
             pat = t
             break
         i += 1
-    return full and pat is not None and not pat.startswith("^") and not re.search(r"\[[^\]]+\]", pat)
+    if not full or ancestors_off or pat is None or "$" in pat:  # a $VARIABLE pattern is unknown here: let it through
+        return False
+    try:
+        return re.search(pat, text) is not None
+    except re.error:
+        return pat in text
 
 
 def rule_self_kill(cmd, p):
-    """Deny pkill -f, and pgrep -f whose result is used (a condition, a wait loop, $(...), | xargs kill), when the
-    pattern is written literally: it also matches the command line of the shell running this command, so that shell
-    gets killed (exit 143/144) or the wait finds itself forever. A display-only `pgrep -af x` just shows one extra line."""
+    """Deny pkill/pidwait -f, and pgrep -f whose result is used (a condition, a wait loop, $(...), | xargs kill), when
+    the pattern matches this command's own text: the shell running it gets killed (exit 143/144) or the wait finds
+    itself forever. A display-only `pgrep -af x` just shows one extra line. Fix = -A (procps-ng 4.0.3+)."""
+    text = cmd  # what the shell's own command line holds, heredoc bodies included
     # heredoc bodies written to a file are text, not commands (a body fed to a local bash/sh runs inside this same shell, so it stays)
     cmd = re.sub(r"(?ms)^([^\n]*?)<<-?\s*(['\"]?)(\w+)\2([^\n]*\n)(.*?)^\s*\3\s*$",
                  lambda h: h.group(0) if re.search(r"\b(bash|sh|zsh)\b", h.group(1)) and not re.search(r"\bssh\b", h.group(1)) else h.group(1) + h.group(4), cmd)
     # only at a command position (start, after ; && || | ( $( `, a shell keyword, sudo, bash -c ' or ssh host '), not inside echo "..."
-    for m in re.finditer(r"(?:^|[;&|(`\n]|\$\(|\b(?:then|do|if|while|until|sudo)\s|!\s|-c\s+['\"]|\bssh\b[^'\";&|]*['\"])\s*(pkill|pgrep)\b([^;&|)`'\"\n]*(?:['\"][^'\"]*['\"][^;&|)`\n]*)?)", cmd):
-        if not _self_matching(m.group(2)):
+    for m in re.finditer(r"(?:^|[;&|(`\n]|\$\(|\b(?:then|do|if|while|until|sudo)\s|!\s|-c\s+['\"]|\bssh\b[^'\";&|]*['\"])\s*(pkill|pgrep|pidwait)\b([^;&|)`'\"\n]*(?:['\"][^'\"]*['\"][^;&|)`\n]*)?)", cmd):
+        if not _self_matching(m.group(2), text):
             continue
-        if m.group(1) == "pkill":
-            return "pkill -f also kills the shell running this command. Wrap one letter of the pattern: pkill -f '[s]erver.js' (or kill by PID file)."
+        if m.group(1) in ("pkill", "pidwait"):
+            return (f"{m.group(1)} -f: the pattern matches this command's own text, which is the command line of the shell running it, "
+                    f"so that shell is hit (exit 143/144). Add -A (--ignore-ancestors, procps-ng 4.0.3+): {m.group(1)} -A -f ... "
+                    "Without -A: bracket one letter ([s]erver.js) and keep the plain word out of the rest of the command (paths, echo), or kill by PID file.")
         before, after = cmd[:m.start(1)], cmd[m.end():]
         used = (re.search(r"(\b(if|while|until)\b|!|\$\(|`)\s*$", before)
                 or re.match(r"\s*(&&|\|\||\|\s*xargs\b|>\s*/dev/null)", after)
                 or re.search(r"\b(if|while|until)\b[^;]*$", before)
                 or re.search(r"(^|[^2])>\s*/dev/null", m.group(2)))  # stdout hidden = only the exit status is used
         if used:
-            return "pgrep -f matches its own shell, so the wait never ends or the kill hits the shell. Wrap one letter of the pattern: [s]erver.js."
+            return ("pgrep -f: the pattern matches this command's own text, so it finds the shell running it (the wait never ends, "
+                    "the kill hits the shell). Add -A (procps-ng 4.0.3+): pgrep -A -f ..., or bracket one letter and keep the plain word out of the command.")
     return None
 
 

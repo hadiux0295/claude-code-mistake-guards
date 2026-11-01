@@ -2,7 +2,7 @@
 
 **7 guards for Claude Code. Each one exists because an AI agent actually made the mistake, more than once.**
 
-**As a plugin, zero config:** stops Claude Code from killing its own shell. `pkill -f server.js` matches the shell that runs it (the pattern is in that shell's own command line), so the tool call dies with exit 143/144 and nothing after it runs; a `while pgrep -f …` wait never ends. The guard denies the command and tells Claude the fix: `pkill -f '[s]erver.js'`.
+**As a plugin, zero config:** stops Claude Code from killing its own shell. `pkill -f server.js` matches the shell that runs it (the pattern is in that shell's own command line), so the tool call dies with exit 143/144 and nothing after it runs; a `while pgrep -f …` wait never ends. The guard denies the command only when the pattern really matches the command's own text, and tells Claude the fix: `pkill -A -f server.js` (`-A` = ignore ancestors, procps-ng 4.0.3+). See [anthropics/claude-code#93607](https://github.com/anthropics/claude-code/issues/93607).
 
 ```
 /plugin marketplace add hadiux0295/claude-code-mistake-guards
@@ -34,7 +34,7 @@ Two things stood out:
 
 This repo is those gates: three Claude Code hooks and four pre-ship scripts, each with a test that proves it really blocks. All of them are small, readable Python with no dependencies beyond the standard library (Pillow and ffmpeg for two of the tools).
 
-> **Tested on Claude Code 2.1.310 and 2.1.316 (2026-10/11).** Checked live in a fresh project: the guard denied a bare `git pull`, and the Stop hook made Claude rewrite a "traffic grew, so there's demand" reply. On 2.1.316 (Linux) a plain `pkill -f <pattern>` still ended the tool call with exit 144 in our test; loaded as a plugin, the guard denied it before it ran, and `pkill -f '[p]attern'` went through.
+> **Tested on Claude Code 2.1.310 and 2.1.316 (2026-10/11).** Checked live in a fresh project: the guard denied a bare `git pull`, and the Stop hook made Claude rewrite a "traffic grew, so there's demand" reply. On 2.1.316 (Linux) a plain `pkill -f <pattern>` still ended the tool call with exit 144 in our test; loaded as a plugin, the guard denied it before it ran; `pkill -A -f <pattern>` killed the target and the shell survived.
 
 ---
 
@@ -42,7 +42,7 @@ This repo is those gates: three Claude Code hooks and four pre-ship scripts, eac
 
 | # | File | Runs on | What it blocks | The mistake it came from |
 |---|------|---------|----------------|--------------------------|
-| 1 | `hooks/guard_bash.py` | `PreToolUse` · `Bash` | `pkill -f`, and `pgrep -f` whose result is used (wait loops, `kill $(pgrep -f …)`, `\| xargs kill`), when the pattern matches their own shell. **On by default; the only rule the plugin turns on.** | `pkill -f server.js` killed Claude's own Bash shell (exit 144); a `while pgrep -f` wait never ended. Written down as a rule, then repeated several more times in two days. |
+| 1 | `hooks/guard_bash.py` | `PreToolUse` · `Bash` | `pkill -f` / `pidwait -f`, and `pgrep -f` whose result is used (wait loops, `kill $(pgrep -f …)`, `\| xargs kill`), when the pattern matches the command's own text and `-A` is missing. A bracket (`[s]erver`) passes only while the plain word appears nowhere else in the command. **On by default; the only rule the plugin turns on.** | `pkill -f server.js` killed Claude's own Bash shell (exit 144); a `while pgrep -f` wait never ended. Written down as a rule, then repeated several more times in two days. |
 | | | | A bare `git pull` in a shared working tree (off until `GUARD_SAFE_PULL` is set) | Pull was banned in writing; the agent typed it anyway while debugging a failed push. |
 | | | | Opening a marketplace's web pages headlessly (off until `GUARD_BLOCKED_SITES` is set) | One headless screenshot of our own shop page got the seller's IP bot-restricted ("automated activity on your network"). |
 | | | | Files scattered at the top of the folder a human uploads from, or a new file in a subfolder while an old one with the same name sits on top (off until `GUARD_UPLOAD_ROOT` is set) | The human uploaded the old file they saw first. The file size on the marketplace gave it away. |
@@ -58,7 +58,7 @@ Guards 4 to 7 are worked examples from our own pipelines (a marketplace listing,
 
 ### What these guards do *not* catch
 
-Each guard checks only what reaches it. `guard_bash.py` sees commands Claude runs itself; upload paths hidden in `$VARIABLES` or inside `ssh "..."` are skipped, and a `pkill -f "$PATTERN"` is judged as written (override it if the variable holds a bracket pattern). Text written into a file with a heredoc is not treated as a command. `ship_check.py` reads titles, tags and descriptions, not the text inside your PDFs or images. `stop_check.py` matches word patterns: it catches the repeat of a known wrong claim, not wrong claims in general. A guard that blocks too often gets switched off, so every pattern here was tested for false positives too.
+Each guard checks only what reaches it. `guard_bash.py` sees commands Claude runs itself; upload paths hidden in `$VARIABLES` or inside `ssh "..."` are skipped, and a `pkill -f "$PATTERN"` passes unchecked (the value is unknown before the shell runs). Older procps and BusyBox have no `-A`; there the guard's other advice (bracket, PID file) applies. Text written into a file with a heredoc is not treated as a command. `ship_check.py` reads titles, tags and descriptions, not the text inside your PDFs or images. `stop_check.py` matches word patterns: it catches the repeat of a known wrong claim, not wrong claims in general. A guard that blocks too often gets switched off, so every pattern here was tested for false positives too.
 
 ---
 
@@ -110,6 +110,8 @@ Each `test_*.sh` checks both directions: what must be blocked is blocked, and wh
 - **The Stop hook blocks once.** When `stop_hook_active` is true it lets the rewrite through, so it can never loop.
 
 ---
+
+Credit: the `-A` fix and the case where a bracket still matches (the word in a `cd` path) come from the #93607 thread (gweber, corneliusroemer). This guard packages that check as a plugin, with tests.
 
 ## Where this comes from
 
