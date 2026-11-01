@@ -9,6 +9,10 @@
   },
   "homepage": "https://github.com/hadiux0295/claude-code-mistake-guards",
   "repository": "https://github.com/hadiux0295/claude-code-mistake-guards",
+  "supportUrl": "https://github.com/hadiux0295/claude-code-mistake-guards/issues",
+  "documentationUrl": "https://github.com/hadiux0295/claude-code-mistake-guards#readme",
+  "privacyPolicyUrl": "https://github.com/hadiux0295/claude-code-mistake-guards/blob/main/PRIVACY.md",
+  "termsOfServiceUrl": "https://github.com/hadiux0295/claude-code-mistake-guards/blob/main/LICENSE",
   "license": "MIT",
   "keywords": [
     "hooks",
