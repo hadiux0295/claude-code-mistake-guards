@@ -2,7 +2,7 @@
 
 **7 guards for Claude Code. Each one exists because an AI agent actually made the mistake, more than once.**
 
-**As a plugin, zero config:** stops Claude Code from killing its own shell. `pkill -f server.js` matches the shell that runs it (the pattern is in that shell's own command line), so the tool call dies with exit 143/144 and nothing after it runs; a `while pgrep -f …` wait never ends. The guard denies the command only when the pattern really matches the command's own text, and tells Claude the fix: `pkill -A -f server.js` (`-A` = ignore ancestors, procps-ng 4.0.3+). See [anthropics/claude-code#93607](https://github.com/anthropics/claude-code/issues/93607).
+**As a plugin, zero config:** stops Claude Code from killing its own shell. `pkill -f server.js` matches the shell that runs it (the pattern is in that shell's own command line), so the tool call dies with exit 143/144 and nothing after it runs; a `while pgrep -f …` wait never ends. The guard denies the command only when the pattern really matches that shell's command line (the tool's wrapper plus your whole command), and tells Claude the fix: `pkill -A -f server.js` (`-A` = ignore ancestors, procps-ng 4.0.3+). See [anthropics/claude-code#93607](https://github.com/anthropics/claude-code/issues/93607).
 
 ```
 /plugin marketplace add hadiux0295/claude-code-mistake-guards
@@ -42,7 +42,7 @@ This repo is those gates: three Claude Code hooks and four pre-ship scripts, eac
 
 | # | File | Runs on | What it blocks | The mistake it came from |
 |---|------|---------|----------------|--------------------------|
-| 1 | `hooks/guard_bash.py` | `PreToolUse` · `Bash` | `pkill -f` / `pidwait -f`, and `pgrep -f` whose result is used (wait loops, `kill $(pgrep -f …)`, `\| xargs kill`), when the pattern matches the command's own text and `-A` is missing. A bracket (`[s]erver`) passes only while the plain word appears nowhere else in the command. **On by default; the only rule the plugin turns on.** | `pkill -f server.js` killed Claude's own Bash shell (exit 144); a `while pgrep -f` wait never ended. Written down as a rule, then repeated several more times in two days. |
+| 1 | `hooks/guard_bash.py` | `PreToolUse` · `Bash` | `pkill -f` / `pidwait -f`, and `pgrep -f` whose result is used (wait loops, `kill $(pgrep -f …)`, `\| xargs kill`), when the pattern matches the shell's own command line (the tool's wrapper plus the whole command) and `-A` is missing. A bracket (`[s]erver`) passes only while the plain word appears nowhere else in the command. **On by default; the only rule the plugin turns on.** | `pkill -f server.js` killed Claude's own Bash shell (exit 144); a `while pgrep -f` wait never ended. Written down as a rule, then repeated several more times in two days. |
 | | | | A bare `git pull` in a shared working tree (off until `GUARD_SAFE_PULL` is set) | Pull was banned in writing; the agent typed it anyway while debugging a failed push. |
 | | | | Opening a marketplace's web pages headlessly (off until `GUARD_BLOCKED_SITES` is set) | One headless screenshot of our own shop page got the seller's IP bot-restricted ("automated activity on your network"). |
 | | | | Files scattered at the top of the folder a human uploads from, or a new file in a subfolder while an old one with the same name sits on top (off until `GUARD_UPLOAD_ROOT` is set) | The human uploaded the old file they saw first. The file size on the marketplace gave it away. |

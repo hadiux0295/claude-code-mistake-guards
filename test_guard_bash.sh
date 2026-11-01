@@ -21,6 +21,8 @@ t pass  s0 'pkill -Af server.js'
 t block s0 "cd /srv/server && pkill -f '[s]erver'"
 t block s0 "pkill -f '[s]erver.js'; echo server.js stopped"
 t pass  s0 'pkill -f "$PATTERN"'
+t block s0 "pkill -f '[b]ash'"
+t block s0 "pkill -f '[s]hell-snapshots'"
 t block s0 'pidwait -f render.py'
 t block s0 'while pgrep -f render.py >/dev/null; do sleep 1; done'
 t block s0 'until ! pgrep -f render.py; do sleep 1; done'

@@ -64,7 +64,12 @@ def rule_self_kill(cmd, p):
     """Deny pkill/pidwait -f, and pgrep -f whose result is used (a condition, a wait loop, $(...), | xargs kill), when
     the pattern matches this command's own text: the shell running it gets killed (exit 143/144) or the wait finds
     itself forever. A display-only `pgrep -af x` just shows one extra line. Fix = -A (procps-ng 4.0.3+)."""
-    text = cmd  # what the shell's own command line holds, heredoc bodies included
+    # what the shell's own command line holds: the tool's wrapper around the whole command, heredoc bodies included
+    # (wrapper shape as quoted in anthropics/claude-code#93607)
+    snap = os.path.join(os.path.expanduser("~"), ".claude", "shell-snapshots", "snapshot-bash-0-x.sh")
+    text = (f"/bin/bash -c source {snap} 2>/dev/null || true && shopt -u extglob 2>/dev/null || true && "
+            "{ \\builtin unalias -- 'unsetenv'; \\builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && "
+            f"eval '{cmd}' < /dev/null && pwd -P >| /tmp/claude-0-cwd")
     # heredoc bodies written to a file are text, not commands (a body fed to a local bash/sh runs inside this same shell, so it stays)
     cmd = re.sub(r"(?ms)^([^\n]*?)<<-?\s*(['\"]?)(\w+)\2([^\n]*\n)(.*?)^\s*\3\s*$",
                  lambda h: h.group(0) if re.search(r"\b(bash|sh|zsh)\b", h.group(1)) and not re.search(r"\bssh\b", h.group(1)) else h.group(1) + h.group(4), cmd)
