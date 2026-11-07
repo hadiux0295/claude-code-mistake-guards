@@ -127,6 +127,12 @@ Our names, servers, accounts and shop names are replaced with generic words. Pub
 
 More of our work: [synuracore.com](https://synuracore.com)
 
+## 한국어
+
+Claude Code가 실제 작업에서 반복한 실수를 막는 훅·검사 7개입니다. 설치와 테스트는 위의 [Install](#install) · [Test](#test)와 같은 명령을 쓰면 됩니다. 실제 실수 기록 50건(영어)은 [MISTAKES.md](MISTAKES.md)에 있습니다.
+
+원래 기록 307건(무슨 일 · 왜 · 이제 이렇게 · CLAUDE.md 한 줄)은 저자가 한국어 유료 전자책 「클로드 코드 실수 노트 300」으로 묶었습니다 — [네이버 프리미엄콘텐츠 · 실수기록관](https://contents.premium.naver.com/mistakelog/mistakelogs). 이 저장소의 가드는 책과 상관없이 MIT 라이선스로 무료입니다.
+
 ## License
 
 MIT. The code is provided as is: test it in your own environment before you rely on it.
