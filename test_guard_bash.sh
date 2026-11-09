@@ -18,6 +18,23 @@ t pass  s0 'pkill node'
 t pass  s0 'pkill -A -f server.js'
 t pass  s0 'pkill --ignore-ancestors -f server.js'
 t pass  s0 'pkill -Af server.js'
+# -A skips ancestors only: a loop / group / shell function stage is a forked sibling that still matches (#93607, martin152)
+t block s0 'pgrep -A -f server.js | grep -q . && echo up'
+t block s0 'pgrep -A -f server.js | while read p; do kill $p; done'
+t block s0 'pgrep -A -f server.js | head -1 | while read p; do echo $p; done'
+t block s0 'pgrep -A -f server.js | rg server'
+t block s0 'if pgrep -A -f server.js | grep -q .; then echo up; fi'
+t block s0 '{ echo x; } | pgrep -A -f server.js'
+t block s0 'pgrep -f server.js | while read p; do kill $p; done'
+t pass  s0 'pgrep -A -f server.js | /usr/bin/grep -q . && echo up'
+t pass  s0 'pgrep -A -f server.js | command grep -q . && echo up'
+t pass  s0 'pgrep -A -f server.js | head -1'
+t pass  s0 'pgrep -A -f server.js | xargs kill'
+t pass  s0 'pids=$(pgrep -A -f server.js); for p in $pids; do kill $p; done'
+t pass  s0 'while pgrep -A -f render.py >/dev/null; do sleep 1; done'
+t pass  s0 "pgrep -f '^node server.js' | while read p; do kill \$p; done"
+t pass  s0 "pgrep -f '^python3 worker.py' | grep -q . && echo up"
+t pass  s0 "until ! pgrep -f '^bash synth_compare.sh' >/dev/null; do sleep 5; done"
 t block s0 "cd /srv/server && pkill -f '[s]erver'"
 t block s0 "pkill -f '[s]erver.js'; echo server.js stopped"
 t pass  s0 'pkill -f "$PATTERN"'

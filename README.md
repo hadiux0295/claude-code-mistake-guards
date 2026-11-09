@@ -2,7 +2,7 @@
 
 **7 guards for Claude Code. Each one exists because an AI agent actually made the mistake, more than once.**
 
-**As a plugin, zero config:** stops Claude Code from killing its own shell. `pkill -f server.js` matches the shell that runs it (the pattern is in that shell's own command line), so the tool call dies with exit 143/144 and nothing after it runs; a `while pgrep -f …` wait never ends. The guard denies the command only when the pattern really matches that shell's command line (the tool's wrapper plus your whole command), and tells Claude the fix: `pkill -A -f server.js` (`-A` = ignore ancestors, procps-ng 4.0.3+). See [anthropics/claude-code#93607](https://github.com/anthropics/claude-code/issues/93607).
+**As a plugin, zero config:** stops Claude Code from killing its own shell. `pkill -f server.js` matches the shell that runs it (the pattern is in that shell's own command line), so the tool call dies with exit 143/144 and nothing after it runs; a `while pgrep -f …` wait never ends. The guard denies the command only when the pattern really matches that shell's command line (the tool's wrapper plus your whole command), and tells Claude the fix: anchor the pattern at the start of the target's command line, `pkill -f '^node server.js'`. Every Claude Code tool shell starts with `/bin/bash -c`, so an anchored pattern skips this shell, its forks and the other Bash/Monitor shells. `-A` (ignore ancestors, procps-ng 4.0.3+) is accepted too, except when the result is piped into a loop, a `{ }` group or a shell function: that stage is a forked copy of the shell, not an ancestor, and still matches. See [anthropics/claude-code#93607](https://github.com/anthropics/claude-code/issues/93607).
 
 ```
 /plugin marketplace add hadiux0295/claude-code-mistake-guards
@@ -34,7 +34,7 @@ Two things stood out:
 
 This repo is those gates: three Claude Code hooks and four pre-ship scripts, each with a test that proves it really blocks. All of them are small, readable Python with no dependencies beyond the standard library (Pillow and ffmpeg for two of the tools).
 
-> **Tested on Claude Code 2.1.310 and 2.1.316 (2026-10/11).** Checked live in a fresh project: the guard denied a bare `git pull`, and the Stop hook made Claude rewrite a "traffic grew, so there's demand" reply. On 2.1.316 (Linux) a plain `pkill -f <pattern>` still ended the tool call with exit 144 in our test; loaded as a plugin, the guard denied it before it ran; `pkill -A -f <pattern>` killed the target and the shell survived.
+> **Tested on Claude Code 2.1.310 and 2.1.316 (2026-10/11).** Checked live in a fresh project: the guard denied a bare `git pull`, and the Stop hook made Claude rewrite a "traffic grew, so there's demand" reply. On 2.1.316 (Linux) a plain `pkill -f <pattern>` still ended the tool call with exit 144 in our test; loaded as a plugin, the guard denied it before it ran; `pkill -A -f <pattern>` killed the target and the shell survived. **2.1.319 (2026-11-10):** `pgrep -A -f X \| grep -q .` still matched (in the Bash tool `grep` is a shell function, so that stage is a forked copy of the shell), `\| /usr/bin/grep` did not, and a `^`-anchored pattern found only the target, also through `\| grep` and a `while read` loop.
 
 ---
 
@@ -42,7 +42,7 @@ This repo is those gates: three Claude Code hooks and four pre-ship scripts, eac
 
 | # | File | Runs on | What it blocks | The mistake it came from |
 |---|------|---------|----------------|--------------------------|
-| 1 | `hooks/guard_bash.py` | `PreToolUse` · `Bash` | `pkill -f` / `pidwait -f`, and `pgrep -f` whose result is used (wait loops, `kill $(pgrep -f …)`, `\| xargs kill`), when the pattern matches the shell's own command line (the tool's wrapper plus the whole command) and `-A` is missing. A bracket (`[s]erver`) passes only while the plain word appears nowhere else in the command. **On by default; the only rule the plugin turns on.** | `pkill -f server.js` killed Claude's own Bash shell (exit 144); a `while pgrep -f` wait never ended. Written down as a rule, then repeated several more times in two days. |
+| 1 | `hooks/guard_bash.py` | `PreToolUse` · `Bash` | `pkill -f` / `pidwait -f`, and `pgrep -f` whose result is used (wait loops, `kill $(pgrep -f …)`, `\| xargs kill`), when the pattern matches the shell's own command line (the tool's wrapper plus the whole command) and `-A` is missing, or `-A` is there but the result is piped into a loop, `{ }` group or shell function (`grep`, `rg`, `find`, `pkill` are functions in the Bash tool). A `^`-anchored pattern passes. A bracket (`[s]erver`) passes only while the plain word appears nowhere else in the command. **On by default; the only rule the plugin turns on.** | `pkill -f server.js` killed Claude's own Bash shell (exit 144); a `while pgrep -f` wait never ended. Written down as a rule, then repeated several more times in two days. |
 | | | | A bare `git pull` in a shared working tree (off until `GUARD_SAFE_PULL` is set) | Pull was banned in writing; the agent typed it anyway while debugging a failed push. |
 | | | | Opening a marketplace's web pages headlessly (off until `GUARD_BLOCKED_SITES` is set) | One headless screenshot of our own shop page got the seller's IP bot-restricted ("automated activity on your network"). |
 | | | | Files scattered at the top of the folder a human uploads from, or a new file in a subfolder while an old one with the same name sits on top (off until `GUARD_UPLOAD_ROOT` is set) | The human uploaded the old file they saw first. The file size on the marketplace gave it away. |
@@ -58,7 +58,7 @@ Guards 4 to 7 are worked examples from our own pipelines (a marketplace listing,
 
 ### What these guards do *not* catch
 
-Each guard checks only what reaches it. `guard_bash.py` sees commands Claude runs itself; upload paths hidden in `$VARIABLES` or inside `ssh "..."` are skipped, and a `pkill -f "$PATTERN"` passes unchecked (the value is unknown before the shell runs). Older procps and BusyBox have no `-A`; there the guard's other advice (bracket, PID file) applies. Text written into a file with a heredoc is not treated as a command. `ship_check.py` reads titles, tags and descriptions, not the text inside your PDFs or images. `stop_check.py` matches word patterns: it catches the repeat of a known wrong claim, not wrong claims in general. A guard that blocks too often gets switched off, so every pattern here was tested for false positives too.
+Each guard checks only what reaches it. `guard_bash.py` sees commands Claude runs itself; upload paths hidden in `$VARIABLES` or inside `ssh "..."` are skipped, and a `pkill -f "$PATTERN"` passes unchecked (the value is unknown before the shell runs). Older procps and BusyBox have no `-A`; the anchored pattern and PID file work there too. The guard sees one command, so it can't see *other* tool shells: a background watcher `until ! pgrep -f X` keeps X in its own command line, and every other `pgrep -f X` (with `-A` or a bracket) finds it. Only an anchored pattern or a PID file avoids that. Text written into a file with a heredoc is not treated as a command. `ship_check.py` reads titles, tags and descriptions, not the text inside your PDFs or images. `stop_check.py` matches word patterns: it catches the repeat of a known wrong claim, not wrong claims in general. A guard that blocks too often gets switched off, so every pattern here was tested for false positives too.
 
 ---
 
@@ -111,7 +111,7 @@ Each `test_*.sh` checks both directions: what must be blocked is blocked, and wh
 
 ---
 
-Credit: the `-A` fix and the case where a bracket still matches (the word in a `cd` path) come from the #93607 thread (gweber, corneliusroemer). This guard packages that check as a plugin, with tests.
+Credit: the `-A` fix and the case where a bracket still matches (the word in a `cd` path) come from the #93607 thread (gweber, corneliusroemer); the cases `-A` misses (forked pipeline stages, shell-function `grep`, other tool shells) from martin152 in the same thread. This guard packages that check as a plugin, with tests.
 
 ## Where this comes from
 

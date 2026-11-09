@@ -29,8 +29,8 @@ FIRST_COMMIT_LINE = os.environ.get("GUARD_FIRST_COMMIT_LINE", "")  # e.g. "said:
 
 def _self_matching(args, text):
     """args = the text after pkill/pgrep/pidwait, text = the whole command. The Bash tool runs the command as
-    bash -c "... eval '<the whole command>'", so that shell's own command line holds the whole text. True if -f is used
-    without -A (--ignore-ancestors) and the pattern matches that text. A bracket ([s]erver) only helps while the
+    bash -c "... eval '<the whole command>'", so that shell's own command line holds the whole text. "plain" if -f is used
+    without -A (--ignore-ancestors) and the pattern matches that text, "ancestors" if it matches with -A, else None. A bracket ([s]erver) only helps while the
     plain word appears nowhere else: `cd /srv/server && pkill -f '[s]erver'` still matches its own shell."""
     try:
         toks = shlex.split(args)
@@ -52,18 +52,35 @@ def _self_matching(args, text):
             pat = t
             break
         i += 1
-    if not full or ancestors_off or pat is None or "$" in pat:  # a $VARIABLE pattern is unknown here: let it through
-        return False
+    if not full or pat is None or "$" in pat:  # a $VARIABLE pattern is unknown here: let it through
+        return None
     try:
-        return re.search(pat, text) is not None
+        hit = re.search(pat, text) is not None
     except re.error:
-        return pat in text
+        hit = pat in text
+    return ("ancestors" if ancestors_off else "plain") if hit else None
+
+
+# A pipeline stage that runs in a fork of the tool's shell instead of exec'ing a program: a loop, a { } / ( ) group,
+# or a shell function (in the Bash tool, grep, rg, find and pkill are functions from the shell snapshot).
+# That fork keeps the shell's command line and is a sibling of pgrep, not an ancestor, so -A does not skip it.
+_FORKED_STAGE = r"\s*(?:(?:while|until|for|if|case|select|grep|rg|find|pkill)\b|[{(])"
+
+
+def _forked_neighbour(before, after):
+    """True if the pipeline around the match has a stage that runs in a fork of this shell."""
+    sep = r"\|\||&&|;|\n|&(?!&)"
+    right = re.split(sep, after, maxsplit=1)[0].split("|")[1:]
+    left = re.split(sep, before)[-1].split("|")[:-1]
+    return (any(re.match(_FORKED_STAGE, st) for st in right)
+            or any(re.match(_FORKED_STAGE, st) or re.search(r"(\}|\)|\bdone|\bfi|\besac)\s*$", st) for st in left))
 
 
 def rule_self_kill(cmd, p):
     """Deny pkill/pidwait -f, and pgrep -f whose result is used (a condition, a wait loop, $(...), | xargs kill), when
     the pattern matches this command's own text: the shell running it gets killed (exit 143/144) or the wait finds
-    itself forever. A display-only `pgrep -af x` just shows one extra line. Fix = -A (procps-ng 4.0.3+)."""
+    itself forever. A display-only `pgrep -af x` just shows one extra line. With -A it is denied only when piped next to a
+    loop, group or shell function (a fork, not an ancestor). Best fix = a '^'-anchored pattern (tool shells start with /bin/bash -c)."""
     # what the shell's own command line holds: the tool's wrapper around the whole command, heredoc bodies included
     # (wrapper shape as quoted in anthropics/claude-code#93607)
     snap = os.path.join(os.path.expanduser("~"), ".claude", "shell-snapshots", "snapshot-bash-0-x.sh")
@@ -75,20 +92,34 @@ def rule_self_kill(cmd, p):
                  lambda h: h.group(0) if re.search(r"\b(bash|sh|zsh)\b", h.group(1)) and not re.search(r"\bssh\b", h.group(1)) else h.group(1) + h.group(4), cmd)
     # only at a command position (start, after ; && || | ( $( `, a shell keyword, sudo, bash -c ' or ssh host '), not inside echo "..."
     for m in re.finditer(r"(?:^|[;&|(`\n]|\$\(|\b(?:then|do|if|while|until|sudo)\s|!\s|-c\s+['\"]|\bssh\b[^'\";&|]*['\"])\s*(pkill|pgrep|pidwait)\b([^;&|)`'\"\n]*(?:['\"][^'\"]*['\"][^;&|)`\n]*)?)", cmd):
-        if not _self_matching(m.group(2), text):
+        hit = _self_matching(m.group(2), text)
+        if not hit:
+            continue
+        before, after = cmd[:m.start(1)], cmd[m.end():]
+        if hit == "ancestors":
+            if _forked_neighbour(before, after):
+                return (f"{m.group(1)} -A -f is piped into a loop, a {{ }} / ( ) group or a shell function (in the Bash tool grep, rg, find "
+                        "and pkill are functions). That stage runs in a fork of this shell, keeps its command line and is not an ancestor, "
+                        "so -A does not skip it and the result includes that fork. Anchor the pattern at the start of the target's "
+                        "command line (pgrep -f '^python3 worker.py': every tool shell starts with /bin/bash -c), call the binary "
+                        "(| /usr/bin/grep, | command grep), or store the result first (pids=$(pgrep -A -f ...); for p in $pids ...).")
             continue
         if m.group(1) in ("pkill", "pidwait"):
             return (f"{m.group(1)} -f: the pattern matches this command's own text, which is the command line of the shell running it, "
-                    f"so that shell is hit (exit 143/144). Add -A (--ignore-ancestors, procps-ng 4.0.3+): {m.group(1)} -A -f ... "
-                    "Without -A: bracket one letter ([s]erver.js) and keep the plain word out of the rest of the command (paths, echo), or kill by PID file.")
-        before, after = cmd[:m.start(1)], cmd[m.end():]
+                    "so that shell is hit (exit 143/144). Best fix: anchor the pattern at the start of the target's command line, "
+                    f"e.g. {m.group(1)} -f '^node server.js'. Every Claude Code tool shell starts with /bin/bash -c, so an anchored pattern "
+                    "skips this shell, its forks and the other Bash/Monitor shells. -A (procps-ng 4.0.3+) skips only this shell's ancestors. "
+                    "Or kill by PID file.")
         used = (re.search(r"(\b(if|while|until)\b|!|\$\(|`)\s*$", before)
                 or re.match(r"\s*(&&|\|\||\|\s*xargs\b|>\s*/dev/null)", after)
                 or re.search(r"\b(if|while|until)\b[^;]*$", before)
+                or re.match(r"[^;&\n]*\|\s*(while|until|for)\b", after)  # piped into a loop that acts on each PID
                 or re.search(r"(^|[^2])>\s*/dev/null", m.group(2)))  # stdout hidden = only the exit status is used
         if used:
             return ("pgrep -f: the pattern matches this command's own text, so it finds the shell running it (the wait never ends, "
-                    "the kill hits the shell). Add -A (procps-ng 4.0.3+): pgrep -A -f ..., or bracket one letter and keep the plain word out of the command.")
+                    "the kill hits the shell). Best fix: anchor the pattern at the start of the target's command line "
+                    "(pgrep -f '^python3 worker.py'), which also skips other tool shells whose text names the target. "
+                    "-A (procps-ng 4.0.3+) skips only this shell's ancestors, not a forked loop or another tool shell.")
     return None
 
 
