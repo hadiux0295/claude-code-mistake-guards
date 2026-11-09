@@ -358,7 +358,7 @@ Right after adding dangerous-command patterns to a PreToolUse hook, writing a RE
 ### 44. `pkill -f` killed its own shell; `pgrep -f` waits never ended 🛡
 `pkill -f 'server.js'` killed Claude's Bash tool shell (exit 144) instead of the server. `while pgrep -f "<script>"` loops never ended, and the agent reported finished batches as running. Claude Code runs your command as `bash -c '<whole command>'`, so the pattern is in that shell's own command line too. After it was written down as a rule, it still repeated several more times in two days. Now `hooks/guard_bash.py` blocks it.
 
-> **CLAUDE.md:** With `pkill -f` / `pgrep -f`, use a bracket pattern (`[s]erver.js`) or a PID file. Never put a bare `pgrep -f` pattern in a wait-loop condition.
+> **CLAUDE.md:** With `pkill -f` / `pgrep -f`, anchor the pattern at the start of the target's command line (`'^node server.js'`) or use a PID file. Use a bracket pattern (`[s]erver.js`) only when the plain word appears nowhere else in the command. Never put a bare `pgrep -f` pattern in a wait-loop condition.
 
 <sub>record #0420 · #0815 · #0518 · #0816 · #0977 · #1060 · 2026-10 · 🛡 now blocked by a guard</sub>
 
