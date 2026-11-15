@@ -21,7 +21,7 @@ They come from a log of 300+ real AI agent mistakes. Three of them:
 
 **→ [50 of these in English, each with a one-line `CLAUDE.md` rule](MISTAKES.md)**
 
-The full 300+ exist only in Korean. ⭐ **Star this repo if you would read them in English**: that is how we decide whether to translate.
+The full 300+ exist only in Korean.
 
 ---
 
@@ -116,8 +116,6 @@ Credit: the `-A` fix and the case where a bracket still matches (the word in a `
 ## Where this comes from
 
 The full log is a Korean e-book of 300+ entries: what happened, why, what we do now, and a one-line rule to paste into `CLAUDE.md`. **[MISTAKES.md](MISTAKES.md) has 50 of them in English.**
-
-**If you would read the full log in English, star this repo.** To get a note when the translation ships, use Watch and pick Releases. That is how we decide whether to translate it.
 
 ### Who wrote this
 
